@@ -175,9 +175,8 @@ stays in that file; only Headroom's own views show it.
 
 ```mermaid
 flowchart TD
-  signin["Approve<br/>in your browser"] -->|tokens from the provider| vault[("vault.json<br/>readable by you alone")]
-  vault <-->|tokens| read["Read usage<br/>from the provider"]
-  read --> shared["headroom.readings<br/>no token, no email"]
+  signin["Approve in your browser"] -->|tokens from the provider| vault[("vault.json<br/>readable by you alone")]
+  vault -->|used to read usage| shared["headroom.readings<br/>no token, no email"]
   shared --> views["Headroom's views"]
   shared --> mods["Other mods"]
   vault -.->|email, organization| views
