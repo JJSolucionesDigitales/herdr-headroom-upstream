@@ -174,7 +174,7 @@ file, reads your usage with it, and publishes the numbers without it. Your email
 stays in that file; only Headroom's own views show it.
 
 ```mermaid
-flowchart LR
+flowchart TD
   signin["Approve<br/>in your browser"] -->|tokens from the provider| vault[("vault.json<br/>readable by you alone")]
   vault <-->|tokens| read["Read usage<br/>from the provider"]
   read --> shared["headroom.readings<br/>no token, no email"]
