@@ -169,15 +169,18 @@ const weekly = accounts[0]?.windows.find((window) => window.id === "7d");
 
 ## Privacy and security
 
-You sign in in your browser. The mod keeps that login in a private file, reads
-your usage with it, and publishes the numbers without it:
+You approve the sign-in in your browser. The mod keeps the login in a private
+file, reads your usage with it, and publishes the numbers without it. Your email
+stays in that file; only Headroom's own views show it.
 
 ```mermaid
 flowchart LR
-  signin["Sign in<br/>in your browser"] -->|login| vault[("vault.json<br/>readable by you alone")]
-  vault --> read["Read usage<br/>from the provider"]
+  signin["Approve<br/>in your browser"] -->|tokens from the provider| vault[("vault.json<br/>readable by you alone")]
+  vault <-->|tokens| read["Read usage<br/>from the provider"]
   read --> shared["headroom.readings<br/>no token, no email"]
-  shared --> views["Headroom's views<br/>and other mods"]
+  shared --> views["Headroom's views"]
+  shared --> mods["Other mods"]
+  vault -.->|email, organization| views
 ```
 
 - **Hosts.** It talks to `api.anthropic.com`, `auth.openai.com` and

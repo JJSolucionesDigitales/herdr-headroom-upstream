@@ -172,8 +172,12 @@ test("every relative link, anchor and image in the README and its pages leads so
     const text = read(path);
     const targets = [
       ...[...text.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1]),
-      ...[...text.matchAll(/\b(?:src|srcset|href)="([^"]+)"/g)].map(
+      ...[...text.matchAll(/\b(?:src|href)="([^"]+)"/g)].map(
         (match) => match[1],
+      ),
+      // A srcset is a list of pictures, each with an optional size after it.
+      ...[...text.matchAll(/\bsrcset="([^"]+)"/g)].flatMap((match) =>
+        match[1].split(",").map((entry) => entry.trim().split(/\s+/)[0]),
       ),
     ].filter((target) => !/^(https?:|mailto:)/.test(target));
     for (const target of targets) {
@@ -191,28 +195,35 @@ test("every relative link, anchor and image in the README and its pages leads so
 
 test("the README shows each screenshot in the reader's theme and links every reference page", () => {
   const readme = read("README.md");
+  const pictures = [
+    ...readme.matchAll(/<picture>\n([\s\S]*?)\n *<\/picture>/g),
+  ].map((match) => match[1].split("\n").map((line) => line.trim()));
   for (const image of ["hero", "account-view", "accounts-and-settings"]) {
-    for (const theme of ["dark", "light"]) {
-      assert.match(
-        readme,
-        new RegExp(
-          `<source media="\\(prefers-color-scheme: ${theme}\\)" srcset="docs/images/${image}-${theme}\\.png" />`,
-        ),
-        `${image}, ${theme}`,
-      );
-    }
-    // The picture a reader without a theme gets, with words for one who
-    // cannot see it.
+    const source = (theme) =>
+      `<source media="(prefers-color-scheme: ${theme})" srcset="docs/images/${image}-${theme}.png" />`;
+    // One picture holds both versions, then the one a reader without a theme
+    // gets, with words for a reader who cannot see it.
+    const picture = pictures.find((lines) => lines[0] === source("dark"));
+    assert.ok(picture, `${image}: no picture starts with its dark version`);
+    assert.equal(picture.length, 3, image);
+    assert.equal(picture[1], source("light"), image);
     assert.match(
-      readme,
+      picture[2],
       new RegExp(
-        `<img src="docs/images/${image}-light\\.png"[^>]* alt="[^"]{20,}"`,
+        `^<img src="docs/images/${image}-light\\.png"[^>]* alt="[^"]{20,}" />$`,
       ),
       image,
     );
   }
   for (const path of GUIDE.slice(1)) {
     assert.ok(readme.includes(`](${path}`), path);
+  }
+});
+
+test("every picture in docs/images is shown somewhere", () => {
+  const guide = GUIDE.map(read).join("\n");
+  for (const file of readdirSync(join(ROOT, "docs", "images"))) {
+    assert.ok(guide.includes(`images/${file}"`), file);
   }
 });
 
