@@ -172,7 +172,7 @@ test("every relative link, anchor and image in the README and its pages leads so
     const text = read(path);
     const targets = [
       ...[...text.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1]),
-      ...[...text.matchAll(/\b(?:src|href)="([^"]+)"/g)].map(
+      ...[...text.matchAll(/\b(?:src|srcset|href)="([^"]+)"/g)].map(
         (match) => match[1],
       ),
     ].filter((target) => !/^(https?:|mailto:)/.test(target));
@@ -189,15 +189,27 @@ test("every relative link, anchor and image in the README and its pages leads so
   }
 });
 
-test("the README shows its screenshots and links every reference page", () => {
+test("the README shows each screenshot in the reader's theme and links every reference page", () => {
   const readme = read("README.md");
-  for (const image of [
-    "limits-sidebar",
-    "limits-status-bar",
-    "account-view",
-    "accounts-and-settings",
-  ]) {
-    assert.match(readme, new RegExp(`src="docs/images/${image}\\.png"`), image);
+  for (const image of ["hero", "account-view", "accounts-and-settings"]) {
+    for (const theme of ["dark", "light"]) {
+      assert.match(
+        readme,
+        new RegExp(
+          `<source media="\\(prefers-color-scheme: ${theme}\\)" srcset="docs/images/${image}-${theme}\\.png" />`,
+        ),
+        `${image}, ${theme}`,
+      );
+    }
+    // The picture a reader without a theme gets, with words for one who
+    // cannot see it.
+    assert.match(
+      readme,
+      new RegExp(
+        `<img src="docs/images/${image}-light\\.png"[^>]* alt="[^"]{20,}"`,
+      ),
+      image,
+    );
   }
   for (const path of GUIDE.slice(1)) {
     assert.ok(readme.includes(`](${path}`), path);
