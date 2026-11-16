@@ -5,9 +5,11 @@ agents. It shows how close each of your Claude and Codex accounts is to its
 usage limits: in the sidebar, in the status bar, or in any block of your layout.
 
 <p align="center">
-  <img src="docs/images/limits-sidebar.png" width="269" align="top" alt="Limits in Herdr's sidebar: two accounts, each with a weekly and a 5-hour bar, and a note that one more account is below" />
-  &nbsp;&nbsp;
-  <img src="docs/images/account-view.png" width="380" align="top" alt="One account's view: its weekly, 5-hour and per-model windows, each with its percentage and reset time" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png" />
+    <img src="docs/images/hero-light.png" width="860" alt="Herdr with Headroom: Limits in the sidebar with two accounts, their weekly and 5-hour bars and a note that one more is below, and the strip in the status bar with one item per account" />
+  </picture>
 </p>
 
 <p align="center">
@@ -105,15 +107,21 @@ account. Remove asks first with the mod's own dialog, then deletes the
 account's stored login from this computer.
 
 <p align="center">
-  <img src="docs/images/accounts-and-settings.png" width="380" alt="Accounts and settings: three accounts with all their windows, arrows and a three-dot menu on each, the notifications switch, Show in status bar and Connect account" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/account-view-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/account-view-light.png" />
+    <img src="docs/images/account-view-light.png" width="380" align="top" alt="One account's view: its weekly, 5-hour and per-model windows, each with its percentage and reset time, one of them at its limit" />
+  </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/accounts-and-settings-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/accounts-and-settings-light.png" />
+    <img src="docs/images/accounts-and-settings-light.png" width="380" align="top" alt="Accounts and settings: two accounts with all their windows, arrows and a three-dot menu on each, the notifications switch, Show in status bar and Connect account" />
+  </picture>
 </p>
 
 **Show in status bar**, a switch in Accounts and settings, turns on the strip
-in the installed layout:
-
-<p align="center">
-  <img src="docs/images/limits-status-bar.png" width="540" alt="The strip in Herdr's status bar: one item per account with its mark, bars and percentage" />
-</p>
+in the installed layout, as in the picture at the top.
 
 ## Using it in your own layout
 
@@ -160,6 +168,19 @@ const weekly = accounts[0]?.windows.find((window) => window.id === "7d");
 [`headroom.readings`](docs/readings.md) documents every field.
 
 ## Privacy and security
+
+You approve the sign-in in your browser. The mod keeps the login in a private
+file, reads your usage with it, and publishes the numbers without it. Your email
+stays in that file; only Headroom's own views show it.
+
+```mermaid
+flowchart TD
+  signin["Approve in your browser"] -->|tokens from the provider| vault[("vault.json<br/>readable by you alone")]
+  vault -->|used to read usage| shared["headroom.readings<br/>no token, no email"]
+  shared --> views["Headroom's views"]
+  shared --> mods["Other mods"]
+  vault -.->|email, organization| views
+```
 
 - **Hosts.** It talks to `api.anthropic.com`, `auth.openai.com` and
   `chatgpt.com`, and only to sign in, refresh a token and read usage. Sign-in
