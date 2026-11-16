@@ -6,6 +6,7 @@ import { providers as allProviders } from "../providers/index.js";
 import {
   accountId,
   defaultLabel,
+  labelOf,
   move,
   remove,
   rename,
@@ -83,7 +84,7 @@ export function createStore(host, { providers = allProviders } = {}) {
       host,
       accounts.map((account) => ({
         ...readings.get(account.id),
-        label: account.label,
+        label: labelOf(account),
       })),
       host.now(),
     );
@@ -296,7 +297,7 @@ export function createStore(host, { providers = allProviders } = {}) {
       accounts.map((account) => ({
         id: account.id,
         provider: account.provider,
-        label: account.label,
+        label: labelOf(account),
         email: account.identity.email,
         organization: account.identity.organization,
         plan: account.identity.plan,
@@ -324,6 +325,7 @@ export function createStore(host, { providers = allProviders } = {}) {
           label: defaultLabel(
             identity,
             current.map((account) => account.label),
+            providerId,
           ),
           position: current.length,
           accessToken: result.credentials.accessToken,
@@ -362,20 +364,21 @@ export function createStore(host, { providers = allProviders } = {}) {
 
     // Reads account `id`, or every account, the person asked to; one whose
     // read started less than 30 seconds ago is not read again, though a read
-    // still running is waited for.
+    // still running is waited for. The promise, which settles once the reads
+    // end, says at once in `started` whether a read runs: one started or one
+    // still running joined; false when every account was skipped.
     refresh(id) {
       const now = host.now();
-      return readAll(
-        accounts
-          .map((account) => account.id)
-          .filter((one) => !id || one === id)
-          .filter(
-            (one) =>
-              !signedOut(one) &&
-              (running.has(one) ||
-                !(now - (attempts.get(one) ?? -Infinity) < MANUAL_GAP_MS)),
-          ),
-      );
+      const ids = accounts
+        .map((account) => account.id)
+        .filter((one) => !id || one === id)
+        .filter(
+          (one) =>
+            !signedOut(one) &&
+            (running.has(one) ||
+              !(now - (attempts.get(one) ?? -Infinity) < MANUAL_GAP_MS)),
+        );
+      return Object.assign(readAll(ids), { started: ids.length > 0 });
     },
   };
 }

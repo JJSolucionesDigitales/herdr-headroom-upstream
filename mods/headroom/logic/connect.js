@@ -44,6 +44,44 @@ export function dialogState(provider = null) {
   };
 }
 
+// How long a copy reads `Copied`.
+const COPIED_MS = 2000;
+
+// Each state's current turn: a copy, a new step or a newly presented value
+// takes the next one, so a wait that ends after it changes nothing.
+const turns = new WeakMap();
+
+function nextTurn(state) {
+  const turn = (turns.get(state) ?? 0) + 1;
+  turns.set(state, turn);
+  return turn;
+}
+
+/**
+ * Marks `what` (`url` or `code`) as just copied; 2 s later, through one
+ * `sleep(ms)`, it reads as not copied and `refresh()` redraws. A later copy,
+ * a new step or closing the dialog first leaves the state to them. Settles
+ * when the wait ends.
+ */
+export async function markCopied(state, what, { sleep, refresh }) {
+  const turn = nextTurn(state);
+  state.copied = what;
+  try {
+    await sleep(COPIED_MS);
+  } catch {
+    return;
+  }
+  if (state.closed || turns.get(state) !== turn) return;
+  state.copied = null;
+  refresh();
+}
+
+/** Back to the choice of provider, in place. */
+export function backToProviders(state) {
+  nextTurn(state);
+  Object.assign(state, dialogState());
+}
+
 /**
  * Starts signing in to `provider` through `store.connect`, keeping `state` in
  * step with it. `sleep(ms)` waits (a failure to wait stops the sign-in),
@@ -64,6 +102,7 @@ export function startSignIn(
   state.error = null;
   state.checking = false;
   state.copied = null;
+  nextTurn(state);
 
   function stop() {
     stopped = true;
@@ -85,6 +124,7 @@ export function startSignIn(
       if (code !== undefined) state.shown.code = code;
       if (deadline !== undefined) state.shown.deadline = deadline;
       state.copied = null;
+      nextTurn(state);
       refresh();
     },
     readCode() {

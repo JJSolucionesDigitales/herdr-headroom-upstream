@@ -93,10 +93,10 @@ test("a pair row draws both bars with pace marks and the numbers under them", (t
   assert.match(all, /41% · 4d 6h/, lines.join("\n"));
   assert.match(all, /5-hour 62% · 1h 48m/, lines.join("\n"));
   for (const id of [
-    "account-0-full",
-    "account-0-full-pace",
-    "account-0-short",
-    "account-0-short-pace",
+    "bar-claude:acct-maxi:org-maxi-full",
+    "bar-claude:acct-maxi:org-maxi-full-pace",
+    "bar-claude:acct-maxi:org-maxi-short",
+    "bar-claude:acct-maxi:org-maxi-short-pace",
   ]) {
     assert.ok(withId(lines, id), `${id} missing\n${lines.join("\n")}`);
   }
@@ -123,8 +123,11 @@ test("weekly only draws one full bar and says resets in", (t) => {
   });
   if (!lines) return;
   assert.match(sentence(lines), /23% · resets in 5d 2h/, lines.join("\n"));
-  assert.ok(withId(lines, "account-0-full"), lines.join("\n"));
-  assert.equal(withId(lines, "account-0-short"), undefined);
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-full"),
+    lines.join("\n"),
+  );
+  assert.equal(withId(lines, "bar-claude:acct-maxi:org-maxi-short"), undefined);
   assert.ok(!texts(lines).includes("5-hour"), lines.join("\n"));
 });
 
@@ -139,8 +142,11 @@ test("5-hour only draws the thin bar alone, its numbers under 5-hour", (t) => {
     /5-hour 62% · resets in 1h 48m/,
     lines.join("\n"),
   );
-  assert.ok(withId(lines, "account-0-short"), lines.join("\n"));
-  assert.equal(withId(lines, "account-0-full"), undefined);
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-short"),
+    lines.join("\n"),
+  );
+  assert.equal(withId(lines, "bar-claude:acct-maxi:org-maxi-full"), undefined);
 });
 
 test("at 180 px the 5-hour numbers lose their word", (t) => {
@@ -227,9 +233,18 @@ test("a window that has not started has no pace mark and says so", (t) => {
   });
   if (!lines) return;
   assert.match(sentence(lines), /0% · not started/, lines.join("\n"));
-  assert.ok(withId(lines, "account-0-short"), lines.join("\n"));
-  assert.equal(withId(lines, "account-0-short-pace"), undefined);
-  assert.ok(withId(lines, "account-0-full-pace"), lines.join("\n"));
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-short"),
+    lines.join("\n"),
+  );
+  assert.equal(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-short-pace"),
+    undefined,
+  );
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-full-pace"),
+    lines.join("\n"),
+  );
 });
 
 test("a first read draws the label and empty tracks, no numbers", (t) => {
@@ -239,8 +254,14 @@ test("a first read draws the label and empty tracks, no numbers", (t) => {
   });
   if (!lines) return;
   assert.ok(texts(lines).includes("maxi"), lines.join("\n"));
-  assert.ok(withId(lines, "account-0-full"), lines.join("\n"));
-  assert.ok(withId(lines, "account-0-short"), lines.join("\n"));
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-full"),
+    lines.join("\n"),
+  );
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-short"),
+    lines.join("\n"),
+  );
   assert.doesNotMatch(sentence(lines), /%/, lines.join("\n"));
   assert.ok(!ids(lines).some((id) => id.endsWith("-pace")), lines.join("\n"));
 });
@@ -264,11 +285,11 @@ test("a failed read dims the last bars, drops resets and pace marks, says its ag
   assert.doesNotMatch(all, /4d 6h|1h 48m|resets/, lines.join("\n"));
   assert.ok(!ids(lines).some((id) => id.endsWith("-pace")), lines.join("\n"));
   assert.match(
-    withId(lines, "account-0-full") ?? "",
+    withId(lines, "bar-claude:acct-maxi:org-maxi-full") ?? "",
     /\.opacity\[Number\(0\.4\)\]/,
   );
   assert.match(
-    withId(lines, "account-0-short") ?? "",
+    withId(lines, "bar-claude:acct-maxi:org-maxi-short") ?? "",
     /\.opacity\[Number\(0\.4\)\]/,
   );
 });
@@ -287,7 +308,10 @@ test("a failed read with no earlier reading shows empty tracks and the reason", 
   });
   if (!lines) return;
   assert.ok(texts(lines).includes("network"), lines.join("\n"));
-  assert.ok(withId(lines, "account-0-full"), lines.join("\n"));
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-full"),
+    lines.join("\n"),
+  );
   assert.doesNotMatch(sentence(lines), /%/, lines.join("\n"));
 });
 
@@ -322,7 +346,10 @@ test("a login ending within 3 days is said on the label line, bars as usual", (t
   });
   if (!lines) return;
   assert.ok(texts(lines).includes("Login ends in 2 days"), lines.join("\n"));
-  assert.ok(withId(lines, "account-0-full-pace"), lines.join("\n"));
+  assert.ok(
+    withId(lines, "bar-claude:acct-maxi:org-maxi-full-pace"),
+    lines.join("\n"),
+  );
   assert.match(sentence(lines), /41% · 4d 6h/);
 });
 
@@ -464,14 +491,14 @@ test("a reached per-model limit is said in place of the week's reset time", (t) 
   assert.doesNotMatch(all, /4d 6h/, lines.join("\n"));
   assert.match(all, /5-hour 62% · 1h 48m/, lines.join("\n"));
   assert.deepEqual(
-    ids(lines).filter((id) => /^account-0-(full|short|model)/.test(id)),
+    ids(lines).filter((id) => /^bar-/.test(id)),
     [
-      "account-0-full",
-      "account-0-full-fill",
-      "account-0-full-pace",
-      "account-0-short",
-      "account-0-short-fill",
-      "account-0-short-pace",
+      "bar-claude:acct-maxi:org-maxi-full",
+      "bar-claude:acct-maxi:org-maxi-full-fill",
+      "bar-claude:acct-maxi:org-maxi-full-pace",
+      "bar-claude:acct-maxi:org-maxi-short",
+      "bar-claude:acct-maxi:org-maxi-short-fill",
+      "bar-claude:acct-maxi:org-maxi-short-pace",
     ],
   );
   assert.match(
@@ -561,4 +588,106 @@ test("with the weekly window at its limit the words are not drawn", (t) => {
   const all = sentence(lines);
   assert.match(all, /At limit · 4d 6h/, lines.join("\n"));
   assert.doesNotMatch(all, /Fable/, lines.join("\n"));
+});
+
+test("Sign in again has room around it, taken back, and keeps its click, underline, pressed look and stop", (t) => {
+  const lines = drawForm(t, "list", {
+    size: SIZE,
+    readings: [
+      reading({
+        status: "signed-out",
+        loginEndsAt: new Date(2026, 10, 9, 15, 0).getTime(),
+      }),
+    ],
+  });
+  if (!lines) return;
+  const control = withId(lines, "account-0-sign-in") ?? "";
+  for (const part of [
+    ".px[Number(6.0)]",
+    ".py[Number(5.0)]",
+    ".mx[Number(-6.0)]",
+    ".my[Number(-5.0)]",
+    ".rounded[Number(6.0)]",
+    ":on_click(fn)",
+    ":hover(.underline)",
+    ":active(.opacity[Number(0.7)])",
+    ":on_mouse_down_left(fn)",
+  ]) {
+    assert.ok(control.includes(part), `${part}\n${lines.join("\n")}`);
+  }
+});
+
+// A label of 54 letters: 421.2 px at 13 px, wider than any list.
+const LONG_LABEL = "Personal Claude account for weekends and side projects";
+
+// The line of the element that draws `text`.
+function elementOf(lines, text) {
+  const at = lines.findIndex(
+    (line) => line.trim() === `text ${JSON.stringify(text)}`,
+  );
+  assert.ok(at > 0, `no ${text}\n${lines.join("\n")}`);
+  return lines[at - 1];
+}
+
+test("a label the list can cut carries its whole text as a tooltip; work carries none", (t) => {
+  assert.equal(LONG_LABEL.length, 54);
+  const lines = drawForm(t, "list", {
+    size: SIZE,
+    readings: [
+      reading({ id: "claude:long", label: LONG_LABEL }),
+      reading({ id: "claude:work", label: "work" }),
+    ],
+  });
+  if (!lines) return;
+  assert.ok(
+    elementOf(lines, LONG_LABEL).includes(
+      `:tooltip[Str(${JSON.stringify(LONG_LABEL)})]`,
+    ),
+    lines.join("\n"),
+  );
+  assert.doesNotMatch(elementOf(lines, "work"), /:tooltip/);
+});
+
+test("a list not measured yet is taken as 268 px: the long label carries its tooltip, work none", (t) => {
+  const lines = drawForm(t, "list", {
+    readings: [
+      reading({ id: "claude:long", label: LONG_LABEL }),
+      reading({ id: "claude:work", label: "work" }),
+    ],
+  });
+  if (!lines) return;
+  assert.ok(
+    elementOf(lines, LONG_LABEL).includes(
+      `:tooltip[Str(${JSON.stringify(LONG_LABEL)})]`,
+    ),
+    lines.join("\n"),
+  );
+  assert.doesNotMatch(elementOf(lines, "work"), /:tooltip/);
+});
+
+test("Sign in again shares the label's line: a label that fits alone is cut beside it", (t) => {
+  // 25 letters at 13 px, 195 px: under the 214 px a 268 px list leaves the
+  // label alone, over the 120.2 px it leaves beside Sign in again.
+  const label = "Claude for weekend things";
+  const lines = drawForm(t, "list", {
+    size: SIZE,
+    readings: [
+      reading({ id: "claude:a", label }),
+      reading({
+        id: "claude:b",
+        label,
+        status: "signed-out",
+        loginEndsAt: new Date(2026, 10, 9, 15, 0).getTime(),
+      }),
+    ],
+  });
+  if (!lines) return;
+  const tips = lines.filter((line) =>
+    line.includes(`:tooltip[Str(${JSON.stringify(label)})]`),
+  );
+  assert.equal(tips.length, 1, lines.join("\n"));
+  const signedOut = lines.findIndex((line) =>
+    line.includes(':id[Str("account-1")]'),
+  );
+  assert.ok(lines.indexOf(tips[0]) > signedOut, lines.join("\n"));
 });

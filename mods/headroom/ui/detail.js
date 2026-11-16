@@ -7,7 +7,8 @@
 // before it opens another view.
 import { div, svg } from "gpui-kit";
 import { Switch, h_flex, v_flex } from "gpui-base";
-import { openAccount, openRemove } from "../logic/account.js";
+import { accountViewOf, openAccount, openRemove } from "../logic/account.js";
+import { canCut } from "../logic/cut.js";
 import {
   ageText,
   arrowsOf,
@@ -21,16 +22,19 @@ import { listRowOf } from "../logic/list.js";
 import { untilReset } from "../logic/pace.js";
 import { setNotify } from "../logic/publish.js";
 import { barOf, isThin, rowOf } from "../logic/rows.js";
-import { STRIP_BLOCK, stripBlock } from "../logic/strip.js";
-import {
-  failedText,
-  loginText,
-  percentText,
-  shortDate,
-} from "../logic/words.js";
+import { STRIP_BLOCK, stripBlock, textWidth } from "../logic/strip.js";
+import { failedText, percentText } from "../logic/words.js";
 import { open as openConnect } from "./connect.js";
 import { labelField, labelInput } from "./field.js";
-import { bar, levelText, mark, spinner } from "./kit.js";
+import {
+  bar,
+  levelText,
+  mark,
+  pressedGround,
+  pressedStep,
+  pressedWord,
+  spinner,
+} from "./kit.js";
 import { moreMenu } from "./menu.js";
 
 const REFRESH = "mods/headroom/icons/refresh.svg";
@@ -44,6 +48,26 @@ const WIDTH = 380;
 const WIDE_PX = 520;
 /** Below this width the reset's clock time is dropped. */
 const NARROW_PX = 340;
+
+// An account's sides, and on its first line the mark, the gaps, the arrows and
+// the three dots, 2 px apart, and the font sizes of the label, the plan, why
+// the last read failed and Sign in again.
+const SIDES = 16;
+const LINE = { mark: 16, gap: 8, control: 22, between: 2 };
+const LABEL = 13;
+const PLAN = 12;
+const FAILED = 11.5;
+const SIGN_IN = 12;
+// The email line's indent, font size and gap, and what sits between its parts.
+const WHO = { left: 24, size: 11.5, gap: 4 };
+const WHO_BETWEEN = 2 * WHO.gap + textWidth("·", WHO.size);
+// A window's name and the numbers beside it below WIDE_PX, the font sizes of
+// the name (and its percentage) and of the reset and clock time; from WIDE_PX
+// the name's column.
+const WINDOW_GAP = 8;
+const NAME = 12;
+const WINDOW_SMALL = 11.5;
+const NAME_COLUMN = 120;
 
 const NOTIFY = "Notify at 90% and at the limit";
 const STRIP = "Show in status bar";
@@ -169,15 +193,19 @@ function closeSelf(view) {
   view.host.closeOverlay(view.props.overlay);
 }
 
-// Reads every account now; the control is Herdr's spinner until it is done.
+// Reads every account now; while a read runs the control is Herdr's spinner
+// until it is done. A refresh the store skips (every read started less than
+// 30 s ago) changes nothing.
 function refresh(view, cx) {
   const state = stateOf(view);
   if (state.refreshing) return;
+  const read = view.store.refresh();
+  if (!read.started) return;
   state.refreshing = true;
   cx.notify();
   cx.spawn(async (cx) => {
     try {
-      await view.store.refresh();
+      await read;
     } finally {
       state.refreshing = false;
       cx.notify();
@@ -230,6 +258,7 @@ function header(view) {
         .rounded(6)
         .cursor_pointer()
         .hover((s) => s.bg(t.hover))
+        .active(pressedGround(t))
         .on_click((_event, cx) => refresh(view, cx))
         .child(
           refreshing
@@ -239,20 +268,53 @@ function header(view) {
     );
 }
 
+// The px the label of `reading` has on its first line in a view `width` px
+// wide: the line less the mark, the plan's gap, what sits on the right (why
+// the last read failed, or Sign in again) and the controls, and the gaps
+// between them. The plan, cut before the label is, takes no room here.
+function labelPlace(reading, row, view, width) {
+  const right =
+    row.state === "failed"
+      ? [textWidth(failedText(reading, view.now), FAILED)]
+      : row.state === "signed-out"
+        ? [textWidth("Sign in again", SIGN_IN)]
+        : [];
+  const controls =
+    arrowsOf(view.readings, reading.id) === null
+      ? LINE.control
+      : 3 * LINE.control + 2 * LINE.between;
+  // The mark, the label, the plan, the space, what is on the right and the
+  // controls.
+  const parts = 4 + (reading.plan ? 1 : 0) + right.length;
+  return (
+    width -
+    2 * SIDES -
+    LINE.mark -
+    right.reduce((sum, px) => sum + px, 0) -
+    controls -
+    (parts - 1) * LINE.gap
+  );
+}
+
 // The account's first line: the mark, the label, the plan and, on the right,
 // why the last read failed or the Sign in again control, then its up and
-// down arrows and its three dots. The plan is cut before the label is. While
-// the account is renamed, its field runs from the mark up to the arrows.
-function labelLine(reading, row, index, view) {
+// down arrows and its three dots. The plan is cut before the label is: the
+// label has its place, the plan what the label leaves of it; each that can be
+// cut carries its whole text as a tooltip. While the account is renamed, its
+// field runs from the mark up to the arrows.
+function labelLine(reading, row, index, view, width) {
   const t = view.theme;
   const signedOut = row.state === "signed-out";
   const input =
     stateOf(view).renaming === reading.id ? renameInput(view) : null;
+  const label = reading.label;
+  const place = labelPlace(reading, row, view, width);
+  const planPlace = place - textWidth(label, LABEL);
   const line = h_flex()
     .h(24)
-    .gap(8)
+    .gap(LINE.gap)
     .items_center()
-    .child(mark(reading.provider, 16, t));
+    .child(mark(reading.provider, LINE.mark, t));
   const named =
     input !== null
       ? line.child(nameField(reading, input, index, view))
@@ -261,10 +323,11 @@ function labelLine(reading, row, index, view) {
             div()
               .min_w(0)
               .truncate()
-              .text_size(13)
+              .text_size(LABEL)
               .font_medium()
               .text_color(signedOut ? t.muted : t.foreground)
-              .child(reading.label),
+              .when(canCut(label, LABEL, place), (el) => el.tooltip(label))
+              .child(label),
           )
           .when(Boolean(reading.plan), (el) =>
             el.child(
@@ -272,8 +335,11 @@ function labelLine(reading, row, index, view) {
                 .min_w(0)
                 .flex_shrink(1000)
                 .truncate()
-                .text_size(12)
+                .text_size(PLAN)
                 .text_color(t.muted)
+                .when(canCut(reading.plan, PLAN, planPlace), (el) =>
+                  el.tooltip(reading.plan),
+                )
                 .child(reading.plan),
             ),
           )
@@ -282,7 +348,7 @@ function labelLine(reading, row, index, view) {
             el.child(
               div()
                 .flex_none()
-                .text_size(11.5)
+                .text_size(FAILED)
                 .text_color(t.muted)
                 .whitespace_nowrap()
                 .child(failedText(reading, view.now)),
@@ -292,7 +358,8 @@ function labelLine(reading, row, index, view) {
   return named.child(controls(reading, index, view));
 }
 
-// The label's field, the account view's own; a click in it stays there.
+// The label's field, the account view's own; a press or a click in it stays
+// there.
 function nameField(reading, input, index, view) {
   return labelField(
     input,
@@ -304,29 +371,42 @@ function nameField(reading, input, index, view) {
     view.theme,
   )
     .id(`account-${index}-name`)
+    .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
     .on_click((_event, cx) => cx.stop_propagation());
 }
 
+// Sign in again, a word in the account's line: neither its press nor its
+// click reaches the account.
 function signInAgain(reading, index, view) {
   const t = view.theme;
-  return div()
-    .id(`account-${index}-sign-in`)
-    .role("button")
-    .accessibility_label(`Sign in again to ${reading.label}`)
-    .flex_none()
-    .text_size(12)
-    .text_color(t.accent)
-    .cursor_pointer()
-    .hover((s) => s.underline())
-    .on_click((_event, cx) => {
-      cx.stop_propagation();
-      closeSelf(view);
-      openConnect(view, {
-        provider: reading.provider,
-        account: reading.id,
-      });
-    })
-    .child("Sign in again");
+  return (
+    div()
+      .id(`account-${index}-sign-in`)
+      .role("button")
+      .accessibility_label(`Sign in again to ${reading.label}`)
+      .flex_none()
+      .text_size(12)
+      .text_color(t.accent)
+      // Room around the word, taken back so nothing else moves.
+      .px(6)
+      .py(5)
+      .mx(-6)
+      .my(-5)
+      .rounded(6)
+      .cursor_pointer()
+      .hover((s) => s.underline())
+      .active(pressedWord())
+      .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
+      .on_click((_event, cx) => {
+        cx.stop_propagation();
+        closeSelf(view);
+        openConnect(view, {
+          provider: reading.provider,
+          account: reading.id,
+        });
+      })
+      .child("Sign in again")
+  );
 }
 
 // The up and down arrows, when there is more than one account, then the
@@ -361,9 +441,9 @@ function controls(reading, index, view) {
 }
 
 // The account's up (`delta` -1) or down (1) arrow; dimmed, and doing
-// nothing, when the account cannot move that way. Neither lets the click
-// reach the account: a dimmed one is disabled, so its own click never runs,
-// and it stops the press instead.
+// nothing, when the account cannot move that way. Neither lets the press or
+// the click reach the account: a dimmed one is disabled, so its own click
+// never runs, and the press is stopped either way.
 function arrow(reading, index, delta, enabled, view) {
   const t = view.theme;
   const up = delta < 0;
@@ -380,12 +460,14 @@ function arrow(reading, index, delta, enabled, view) {
     .items_center()
     .justify_center()
     .rounded(6)
-    .when(enabled, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
-    .when(!enabled, (el) =>
+    .when(enabled, (el) =>
       el
-        .opacity(0.35)
-        .on_mouse_down("left", (_event, cx) => cx.stop_propagation()),
+        .cursor_pointer()
+        .hover((s) => s.bg(t.hover))
+        .active(pressedGround(t)),
     )
+    .when(!enabled, (el) => el.opacity(0.35))
+    .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
     .on_click((_event, cx) => {
       cx.stop_propagation();
       moveAccount(view, reading.id, delta);
@@ -398,34 +480,56 @@ function arrow(reading, index, delta, enabled, view) {
     );
 }
 
-// `maxi@terac.example · Terac`, under the label.
-function whoLine(account, t) {
+// `maxi@terac.example · Terac`, under the label, in a view `width` px wide.
+// The parts give way together: each has the line less the others and what
+// sits between them, and carries its whole text as a tooltip when that can
+// cut it.
+function whoLine(account, width, t) {
   const parts = [account?.email, account?.organization].filter(Boolean);
   if (parts.length === 0) return null;
+  const line = width - 2 * SIDES - WHO.left - WHO_BETWEEN * (parts.length - 1);
+  const all = parts.reduce((sum, part) => sum + textWidth(part, WHO.size), 0);
   return h_flex()
     .h(16)
     .mt(1)
-    .pl(24)
-    .gap(4)
+    .pl(WHO.left)
+    .gap(WHO.gap)
     .items_center()
-    .text_size(11.5)
+    .text_size(WHO.size)
     .text_color(t.muted)
     .children(
-      parts.flatMap((part, i) => [
-        ...(i > 0 ? [div().flex_none().text_color(t.dim).child("·")] : []),
-        div().min_w(0).truncate().child(part),
-      ]),
+      parts.flatMap((part, i) => {
+        const place = line - (all - textWidth(part, WHO.size));
+        return [
+          ...(i > 0 ? [div().flex_none().text_color(t.dim).child("·")] : []),
+          div()
+            .min_w(0)
+            .truncate()
+            .when(canCut(part, WHO.size, place), (el) => el.tooltip(part))
+            .child(part),
+        ];
+      }),
     );
 }
 
-// One window: its name, percentage, reset and clock time, and its bar.
-function windowView(window, id, view, { dimmed, wide, narrow }) {
+// One window: its name, percentage, reset and clock time, and its bar. A
+// failed read's (`dimmed`) keeps its last percentage alone, in the quiet
+// colour, as the account view does: its reset may have passed since. In a
+// view `width` px wide, a name that can be cut carries its whole text as a
+// tooltip: from WIDE_PX it has a column of its own, below it what the
+// numbers beside it leave of the account's width.
+function windowView(window, id, view, { dimmed, wide, narrow, width }) {
   const t = view.theme;
   const level = levelOf(window);
   const { fraction, pace } = barOf(window, view.now);
-  const left = untilReset(window, view.now);
-  const percent = level === "limit" ? "At limit" : percentText(window);
-  const reset = left === null ? "not started" : `resets in ${left}`;
+  const left = dimmed ? null : untilReset(window, view.now);
+  const percent =
+    level === "limit" && !dimmed ? "At limit" : percentText(window);
+  const reset = dimmed
+    ? null
+    : left === null
+      ? "not started"
+      : `resets in ${left}`;
   const clock =
     left === null || narrow ? null : clockText(window.resetsAt, view.now);
   const track = bar(
@@ -440,25 +544,39 @@ function windowView(window, id, view, { dimmed, wide, narrow }) {
     },
     t,
   );
+  const beside = [
+    [percent, NAME],
+    [reset, WINDOW_SMALL],
+    [clock, WINDOW_SMALL],
+  ].filter(([text]) => text !== null);
+  const namePlace = wide
+    ? NAME_COLUMN
+    : beside.reduce(
+        (left, [text, size]) => left - WINDOW_GAP - textWidth(text, size),
+        width - 2 * SIDES,
+      );
   const name = div()
     .min_w(0)
     .truncate()
     .text_color(t.muted)
+    .when(canCut(window.label, NAME, namePlace), (el) =>
+      el.tooltip(window.label),
+    )
     .child(window.label);
   const number = div()
     .flex_none()
-    .text_color(levelText(level, t))
+    .text_color(levelText(dimmed ? "normal" : level, t))
     .whitespace_nowrap()
     .child(percent);
   const resets = div()
     .flex_none()
-    .text_size(11.5)
+    .text_size(WINDOW_SMALL)
     .text_color(t.muted)
     .whitespace_nowrap()
-    .child(reset);
+    .when(reset !== null, (el) => el.child(reset));
   const time = div()
     .flex_none()
-    .text_size(11.5)
+    .text_size(WINDOW_SMALL)
     .text_color(t.muted)
     .whitespace_nowrap();
 
@@ -468,8 +586,8 @@ function windowView(window, id, view, { dimmed, wide, narrow }) {
       .h(16)
       .gap(14)
       .items_center()
-      .text_size(12)
-      .child(name.w(120).flex_none())
+      .text_size(NAME)
+      .child(name.w(NAME_COLUMN).flex_none())
       .child(div().flex_1().min_w(0).child(track))
       .child(number.w(56).text_right())
       .child(resets.w(104))
@@ -486,35 +604,29 @@ function windowView(window, id, view, { dimmed, wide, narrow }) {
       h_flex()
         .h(16)
         .mb(6)
-        .gap(8)
+        .gap(WINDOW_GAP)
         .items_center()
-        .text_size(12)
+        .text_size(NAME)
         .child(name.flex_1())
         .child(number)
-        .child(resets)
+        .when(reset !== null, (el) => el.child(resets))
         .when(clock !== null, (el) => el.child(time.child(clock))),
     )
     .child(track);
 }
 
-// `Login ends Dec 5`, in the high colour in its last 3 days; `Login ended
-// Nov 9` for an account that must sign in again; nothing before the first
-// read, which draws the account's header lines only.
-function loginLine(reading, row, view) {
-  const t = view.theme;
-  const text =
-    row.state === "signed-out"
-      ? loginText(reading, view.now)
-      : row.state !== "first" && reading.loginEndsAt != null
-        ? `Login ends ${shortDate(reading.loginEndsAt)}`
-        : null;
-  if (text === null) return null;
+// The login line of the account view's `login`: `Login ends Dec 5`; `Login
+// ends in 2 days` in the high colour in its last 3 days; `Login ended Nov 9`
+// for an account that must sign in again; nothing before the first read,
+// which draws the account's header lines only.
+function loginLine(login, t) {
+  if (login === null) return null;
   return div()
     .mt(12)
     .h(16)
     .text_size(11.5)
-    .text_color(row.loginWarning ? levelText("high", t) : t.muted)
-    .child(text);
+    .text_color(login.warning ? levelText("high", t) : t.muted)
+    .child(login.text);
 }
 
 function section(reading, index, account, view) {
@@ -525,11 +637,12 @@ function section(reading, index, account, view) {
     dimmed: row.state === "failed",
     wide: width >= WIDE_PX,
     narrow: width < NARROW_PX,
+    width,
   };
   const windows =
     row.state === "signed-out" ? [] : windowsInOrder(reading.windows);
-  const who = whoLine(account, t);
-  const login = loginLine(reading, row, view);
+  const who = whoLine(account, width, t);
+  const login = loginLine(accountViewOf(reading, account, view.now).login, t);
   return v_flex()
     .id(`account-${index}`)
     .role("button")
@@ -537,20 +650,21 @@ function section(reading, index, account, view) {
     .flex_none()
     .pt(11)
     .pb(13)
-    .px(16)
+    .px(SIDES)
     .border_t(1)
     .border_color(t.border)
     .cursor_pointer()
     .hover((s) => s.bg(t.hover))
+    .active(pressedGround(t))
     .on_click(() => {
       closeSelf(view);
       openAccount(view, reading.id);
     })
-    .child(labelLine(reading, row, index, view))
+    .child(labelLine(reading, row, index, view, width))
     .when(who !== null, (el) => el.child(who))
     .children(
-      windows.map((window, k) =>
-        windowView(window, `account-${index}-window-${k}`, view, layout),
+      windows.map((window) =>
+        windowView(window, `bar-${reading.id}-${window.id}`, view, layout),
       ),
     )
     .when(login !== null, (el) => el.child(login));
@@ -583,9 +697,11 @@ function empty(t) {
     );
 }
 
-// A 30 by 18 px switch, `accent` when on and `input` when off, its knob
-// sliding across; `change(checked)` runs when it is turned.
-function toggle(id, on, label, change, t) {
+// A 30 by 18 px switch on `input`, its knob on `muted` sliding across. Over
+// each lies a layer, `accent` on the track and `accent_foreground` on the knob,
+// that fades in as the knob slides on and out as it slides off, so the colours
+// change in step with it. `turn(cx)` runs when it is turned.
+function toggle(id, on, label, turn, t) {
   return Switch.new(id)
     .checked(on)
     .accessibility_label(label)
@@ -594,12 +710,10 @@ function toggle(id, on, label, change, t) {
     .w(30)
     .h(18)
     .rounded(9)
-    .bg(on ? t.accent : t.input)
+    .bg(t.input)
     .cursor_pointer()
-    .on_change((checked, cx) => {
-      change(checked);
-      cx.notify();
-    })
+    .on_change((_checked, cx) => turn(cx))
+    .child(onLayer(`${id}-on`, on, t.accent).rounded(9))
     .child(
       div()
         .absolute()
@@ -607,13 +721,27 @@ function toggle(id, on, label, change, t) {
         .left(on ? 14 : 2)
         .size(14)
         .rounded_full()
-        .bg(on ? t.accent_foreground : t.muted)
-        .transition("left", SLIDE),
+        .bg(t.muted)
+        .transition("left", SLIDE)
+        .child(
+          onLayer(`${id}-knob-on`, on, t.accent_foreground).rounded_full(),
+        ),
     );
 }
 
-function notifySwitch(view) {
-  return toggle(
+// A layer of `colour` filling its parent, shown while the switch is on.
+function onLayer(id, on, colour) {
+  return div()
+    .id(id)
+    .absolute()
+    .inset_0()
+    .bg(colour)
+    .opacity(on ? 1 : 0)
+    .transition("opacity", SLIDE);
+}
+
+function notifyLine(view) {
+  return switchLine(
     "notify",
     view.notify,
     NOTIFY,
@@ -623,9 +751,9 @@ function notifySwitch(view) {
 }
 
 // On while the strip's block is shown; null when the layout has none.
-function stripSwitch(view, block) {
+function stripLine(view, block) {
   if (block === null) return null;
-  return toggle(
+  return switchLine(
     "strip",
     !block.hidden,
     STRIP,
@@ -634,13 +762,31 @@ function stripSwitch(view, block) {
   );
 }
 
-// A line of the footer's left column: a switch and its label.
-function switchLine(control, label, t) {
+// A line of the footer's left column: the switch and its label, one target
+// that turns the switch. Its room around them is taken back by its margins,
+// so the footer keeps its height. The line and the switch both set the value
+// opposite to the one drawn, so a press that reaches both turns it once. The
+// switch stays the one named control; the hover and pressed grounds are the
+// line's, as a `Switch` takes no state styles.
+function switchLine(id, on, label, set, t) {
+  const turn = (cx) => {
+    set(!on);
+    cx.notify();
+  };
   return h_flex()
-    .min_h(18)
+    .id(`${id}-line`)
+    .px(6)
+    .py(4)
+    .mx(-6)
+    .my(-4)
     .gap(10)
     .items_center()
-    .child(control)
+    .rounded(7)
+    .cursor_pointer()
+    .hover((s) => s.bg(t.hover))
+    .active(pressedGround(t))
+    .on_click((_event, cx) => turn(cx))
+    .child(toggle(id, on, label, turn, t))
     .child(
       div()
         .flex_1()
@@ -667,6 +813,7 @@ function connectButton(view) {
     .bg(t.raised)
     .cursor_pointer()
     .hover((s) => s.bg(t.selected))
+    .active(pressedStep(t))
     .on_click(() => {
       closeSelf(view);
       openConnect(view, {});
@@ -695,7 +842,7 @@ function connectButton(view) {
 // at the right, centred on them.
 function footer(view, block) {
   const t = view.theme;
-  const strip = stripSwitch(view, block);
+  const strip = stripLine(view, block);
   return h_flex()
     .flex_none()
     .px(16)
@@ -709,8 +856,8 @@ function footer(view, block) {
         .flex_1()
         .min_w(0)
         .gap(10)
-        .child(switchLine(notifySwitch(view), NOTIFY, t))
-        .when(strip !== null, (el) => el.child(switchLine(strip, STRIP, t))),
+        .child(notifyLine(view))
+        .when(strip !== null, (el) => el.child(strip)),
     )
     .child(connectButton(view));
 }

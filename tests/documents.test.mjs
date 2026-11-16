@@ -522,3 +522,219 @@ test("PRODUCT.md fits Limits to two accounts, puts the strip behind a switch and
   assert.match(evidence, /[Nn]ot tried live/);
   assert.doesNotMatch(evidence, /has not been tried live yet/);
 });
+
+test("DESIGN.md, design.json and RECIPE.md move the bars over 250 ms ease-in-out, not 400 ms", () => {
+  const bars = section(
+    read("DESIGN.md"),
+    "The Pair of Bars (signature)",
+  ).replace(/\s+/g, " ");
+  assert.match(bars, /250 ms `?ease-in-out`?/);
+  assert.doesNotMatch(read("DESIGN.md"), /400 ms/);
+  const design = JSON.parse(read(".impeccable/design.json"));
+  assert.equal(design.schemaVersion, 2);
+  const motion = (name) =>
+    design.extensions.motion.find((entry) => entry.name === name);
+  assert.equal(motion("reading").value, "250ms ease-in-out");
+  assert.match(motion("switch").purpose, /fade/i);
+  assert.doesNotMatch(read(".impeccable/design.json"), /\.4s ease-out/);
+  const recipe = read("RECIPE.md").replace(/\s+/g, " ");
+  assert.match(recipe, /250 ms,? ease-in-out/);
+  assert.doesNotMatch(recipe, /400 ms/);
+});
+
+test("DESIGN.md's switch cross-fades its colours and turns from its whole line", () => {
+  const toggle = section(read("DESIGN.md"), "Switch").replace(/\s+/g, " ");
+  assert.match(toggle, /cross-fade/);
+  assert.match(toggle, /160 ms `?ease-out`?/);
+  assert.match(toggle, /4 by 6 px/);
+  assert.match(toggle, /line turns it|line toggles it/);
+  const design = JSON.parse(read(".impeccable/design.json"));
+  const sw = design.components.find((c) => c.refersTo === "switch-on");
+  assert.match(sw.description, /fade/i);
+  assert.match(sw.description, /line/);
+});
+
+test("DESIGN.md answers a press at once and keeps Copy and Connect one width", () => {
+  const doc = read("DESIGN.md").replace(/\s+/g, " ");
+  assert.match(doc, /pointer-down/);
+  assert.match(doc, /0\.72/);
+  assert.match(doc, /0\.7 opacity/);
+  assert.match(doc, /6 % toward `foreground`/);
+  const buttons = section(read("DESIGN.md"), "Buttons").replace(/\s+/g, " ");
+  assert.match(buttons, /"Copied"[^.]*2 s/);
+  assert.match(buttons, /5 by 6 px/);
+  assert.match(buttons, /one width/);
+});
+
+test("the strip leaves out and counts the accounts it cannot show, its labels at most 92 px", () => {
+  const layout = section(read("DESIGN.md"), "Layout").replace(/\s+/g, " ");
+  assert.match(layout, /\b92 px\b/);
+  assert.match(layout, /"\+N"/);
+  assert.match(layout, /"N more accounts"/);
+  assert.doesNotMatch(layout, /marks and percentages always stay/);
+  const guide = read("docs/layout.md").replace(/\s+/g, " ");
+  assert.match(guide, /`\+N`/);
+  assert.match(guide, /92 px/);
+  assert.doesNotMatch(guide, /the marks and percents stay/);
+  const design = JSON.parse(read(".impeccable/design.json"));
+  assert.ok(
+    design.components.some((c) => /\+N/.test(c.description)),
+    "design.json describes the strip's +N",
+  );
+});
+
+test("Remove's dialog names the account under its question and shows the deletion running", () => {
+  const dialog = section(read("DESIGN.md"), "Remove's Dialog").replace(
+    /\s+/g,
+    " ",
+  );
+  for (const px of [10, 14, 6, 12]) {
+    assert.match(dialog, new RegExp(`\\b${px} px\\b`), `${px} px`);
+  }
+  assert.match(dialog, /"A Claude account"/);
+  assert.match(dialog, /"A Codex account"/);
+  assert.match(dialog, /45 %/);
+  const layout = section(read("DESIGN.md"), "Layout").replace(/\s+/g, " ");
+  assert.match(layout, /Remove's dialog\.\*\*[^.]*10 px/);
+  const design = JSON.parse(read(".impeccable/design.json"));
+  const danger = design.components.find((c) => c.refersTo === "button-danger");
+  assert.match(danger.description, /email/);
+  assert.match(danger.description, /spinner/);
+  const accounts = read("docs/accounts.md").replace(/\s+/g, " ");
+  assert.match(accounts, /Remove[^.]*mark and (its )?email/);
+});
+
+test("the account pages name the provider as the last label and the days in a login's last three days", () => {
+  const accounts = read("docs/accounts.md").replace(/\s+/g, " ");
+  assert.match(accounts, /provider's name/);
+  assert.match(accounts, /`Login ends in (N|\d+) days`/);
+  const layout = read("docs/layout.md").replace(/\s+/g, " ");
+  assert.match(layout, /`Login ends in (N|\d+) days`/);
+  const recipe = read("RECIPE.md");
+  const detail = recipe
+    .slice(
+      recipe.indexOf("**Detail view**"),
+      recipe.indexOf("**Account view**"),
+    )
+    .replace(/\s+/g, " ");
+  assert.match(detail, /`Login ends in 2 days`/);
+});
+
+// The text of RECIPE.md from the bold lead `from` up to the bold lead `to`.
+function recipePart(from, to) {
+  const recipe = read("RECIPE.md");
+  const start = recipe.indexOf(`**${from}**`);
+  assert.notEqual(start, -1, `no **${from}** in RECIPE.md`);
+  const end = recipe.indexOf(`**${to}**`, start);
+  assert.notEqual(end, -1, `no **${to}** after **${from}** in RECIPE.md`);
+  return recipe.slice(start, end).replace(/\s+/g, " ");
+}
+
+test("RECIPE.md's strip leaves out and counts the accounts it cannot show, its labels at most 92 px", () => {
+  const strip = recipePart("Strip", "Detail view");
+  assert.match(strip, /\b92 px\b/);
+  assert.match(strip, /"\+N"|`\+N`/);
+  assert.match(strip, /"N more accounts"|`N more accounts`/);
+  assert.match(strip, /first account is always/);
+});
+
+test("RECIPE.md answers every press on pointer-down with the pressed looks", () => {
+  const behaves = section(read("RECIPE.md"), "How it behaves").replace(
+    /\s+/g,
+    " ",
+  );
+  const presses = behaves.slice(behaves.indexOf("**Presses.**"));
+  assert.match(presses, /^\*\*Presses\.\*\*/);
+  assert.match(presses, /pointer-down/);
+  assert.match(presses, /`selected`/);
+  assert.match(presses, /6 % toward `foreground`/);
+  assert.match(presses, /72 %/);
+  assert.match(presses, /70 %/);
+  assert.match(presses, /[Dd]isabled[^.]*no pressed look/);
+});
+
+test("RECIPE.md's footer switch cross-fades its colour layers and turns from its whole line", () => {
+  const detail = recipePart("Detail view", "Account view");
+  assert.match(detail, /`accent` layer/);
+  assert.match(detail, /cross-fade/);
+  assert.match(detail, /160 ms/);
+  assert.match(detail, /line[^.]*(turns|toggles) it/);
+  assert.match(detail, /4 by 6 px/);
+});
+
+test("RECIPE.md's Copy turns back after 2 s and Remove's dialog shows its deletion running", () => {
+  const behaves = section(read("RECIPE.md"), "How it behaves").replace(
+    /\s+/g,
+    " ",
+  );
+  assert.match(behaves, /"Copied"[^.]*2 s/);
+  const dialog = recipePart("Remove dialog", "Connect dialog");
+  assert.match(dialog, /spinner/);
+  assert.match(dialog, /45 %/);
+  assert.match(dialog, /disabled/);
+});
+
+test("RECIPE.md's detail view shows a failed read's percentage alone, as the account view does", () => {
+  const detail = recipePart("Detail view", "Account view");
+  assert.match(
+    detail,
+    /failed read[^.]*percent[^.]*alone|percent[^.]*alone[^.]*failed read/,
+  );
+});
+
+test("RECIPE.md names Back's tooltip, tooltips on cut text and the provider's name as the last label", () => {
+  const recipe = read("RECIPE.md").replace(/\s+/g, " ");
+  assert.match(recipe, /tooltip "Back"/);
+  assert.match(recipe, /whole text as a tooltip/);
+  assert.match(recipe, /provider's name \("Claude", "Codex"\)/);
+});
+
+test("design.json's selected ground is the pressed grounds, and every hovered sample has its pressed look", () => {
+  const design = JSON.parse(read(".impeccable/design.json"));
+  assert.match(
+    design.extensions.colorMeta.selected.purpose,
+    /pressed grounds/i,
+  );
+  assert.doesNotMatch(
+    design.extensions.colorMeta.selected.purpose,
+    /secondary button/i,
+  );
+  // A hover on `hover` presses on `selected`, a hover on `selected` one step
+  // past it, and a hover at .88 opacity at .72.
+  const pressed = {
+    "background:var(--hover)": /background:var\(--selected\)/,
+    "background:var(--selected)":
+      /background:color-mix\(in srgb,var\(--selected\),var\(--fg\) 6%\)/,
+    "opacity:.88": /opacity:\.72/,
+  };
+  let hovered = 0;
+  for (const component of design.components) {
+    const rules = [...(component.css ?? "").matchAll(/([^{}]+)\{([^}]*)\}/g)];
+    for (const [, selectors, body] of rules) {
+      const names = [...selectors.matchAll(/\.(ds-[\w-]+):hover/g)].map(
+        (m) => m[1],
+      );
+      for (const name of names) {
+        hovered += 1;
+        const look = Object.keys(pressed).find((decl) => body.includes(decl));
+        assert.ok(look, `${component.refersTo}: .${name}:hover{${body}}`);
+        const active = rules.find(([, other]) =>
+          new RegExp(`\\.${name}(:not\\([^)]*\\))*:active`).test(other),
+        );
+        assert.ok(active, `${component.refersTo}: no .${name}:active`);
+        assert.match(
+          active[2],
+          pressed[look],
+          `${component.refersTo}: .${name}`,
+        );
+      }
+    }
+  }
+  assert.ok(hovered >= 10, `${hovered} hovered samples`);
+});
+
+test("DESIGN.md and the kit do not say the step past selected keeps its alpha", () => {
+  const design = read("DESIGN.md").replace(/\s+/g, " ");
+  assert.doesNotMatch(design, /as translucent as `selected` is/);
+  assert.match(design, /alpha[^.]*6 %|6 %[^.]*alpha/);
+});

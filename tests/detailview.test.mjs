@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { drawForm, drawSource, texts, withId } from "./helpers/draw.mjs";
-import { reading, win } from "./helpers/fakes.mjs";
+import {
+  drawClicking,
+  drawForm,
+  drawSource,
+  texts,
+  themeColour,
+  withId,
+} from "./helpers/draw.mjs";
+import { NOW, reading, win } from "./helpers/fakes.mjs";
 
 test("the detail view draws each account and Connect account", (t) => {
   const lines = drawForm(t, "detail", {
@@ -200,22 +207,27 @@ test("three accounts at 380 px: every window with its numbers, reset and clock t
 
   // Each window's bar: full for weekly windows, thin for the 5-hour one,
   // each with its pace mark.
-  assert.match(withId(lines, "account-0-window-0") ?? "", /\.h\[Number\(6/);
-  assert.match(withId(lines, "account-0-window-1") ?? "", /\.h\[Number\(3/);
-  assert.match(withId(lines, "account-0-window-2") ?? "", /\.h\[Number\(6/);
+  assert.match(withId(lines, `bar-${MAXI}-7d`) ?? "", /\.h\[Number\(6/);
+  assert.match(withId(lines, `bar-${MAXI}-5h`) ?? "", /\.h\[Number\(3/);
+  assert.match(withId(lines, `bar-${MAXI}-7d:sonnet`) ?? "", /\.h\[Number\(6/);
   for (const id of [
-    "account-0-window-0-pace",
-    "account-0-window-1-pace",
-    "account-0-window-2-pace",
-    "account-1-window-1-pace",
-    "account-2-window-0-pace",
+    `bar-${MAXI}-7d-pace`,
+    `bar-${MAXI}-5h-pace`,
+    `bar-${MAXI}-7d:sonnet-pace`,
+    `bar-${TERAC}-5h-pace`,
+    `bar-${MAXILR}-7d-pace`,
   ]) {
     assert.ok(withId(lines, id), `${id} missing\n${show(lines)}`);
   }
-  assert.equal(withId(lines, "account-0-window-3"), undefined);
+  assert.deepEqual(
+    ids(lines).filter(
+      (id) => id.startsWith(`bar-${MAXI}-`) && !/-(fill|pace)$/.test(id),
+    ),
+    [`bar-${MAXI}-7d`, `bar-${MAXI}-5h`, `bar-${MAXI}-7d:sonnet`],
+  );
   // The bar is under its line.
   assert.ok(
-    at(lines, { id: "account-0-window-0" }) > at(lines, "Mon 20:30"),
+    at(lines, { id: `bar-${MAXI}-7d` }) > at(lines, "Mon 20:30"),
     show(lines),
   );
 });
@@ -252,8 +264,8 @@ test("while reading, the refresh control is Herdr's spinner", (t) => {
 test("a weekly-only account draws one full bar and no 5-hour line", (t) => {
   const lines = draw(t, { readings: [maxilr()] });
   if (!lines) return;
-  assert.ok(withId(lines, "account-0-window-0"), show(lines));
-  assert.equal(withId(lines, "account-0-window-1"), undefined);
+  assert.ok(withId(lines, `bar-${MAXILR}-7d`), show(lines));
+  assert.equal(withId(lines, `bar-${MAXILR}-5h`), undefined);
   assert.ok(!texts(lines).includes("5-hour"), show(lines));
   assert.match(sentence(lines), /Weekly 23% resets in 5d 2h Tue 16:30/);
 });
@@ -271,7 +283,7 @@ test("at 560 px each window is one line: name, bar, percentage, reset, clock", (
   const lines = draw(t, { width: 560, readings: [maxi()] });
   if (!lines) return;
   const name = at(lines, "Weekly");
-  const bar = at(lines, { id: "account-0-window-0" });
+  const bar = at(lines, { id: `bar-${MAXI}-7d` });
   const percent = at(lines, "41%");
   assert.ok(name >= 0 && bar > name && percent > bar, show(lines));
   assert.ok(at(lines, "resets in 4d 6h") > percent, show(lines));
@@ -351,9 +363,9 @@ test("a failed read dims the bars, drops pace marks and says its age", (t) => {
   assert.ok(drawn.includes("41%"), show(lines));
   assert.ok(!ids(lines).some((id) => id.endsWith("-pace")), show(lines));
   for (const id of [
-    "account-0-window-0",
-    "account-0-window-1",
-    "account-0-window-2",
+    `bar-${MAXI}-7d`,
+    `bar-${MAXI}-5h`,
+    `bar-${MAXI}-7d:sonnet`,
   ]) {
     assert.match(withId(lines, id) ?? "", /\.opacity\[Number\(0\.4\)\]/, id);
   }
@@ -387,9 +399,9 @@ test("a window that has not started reads 0% and not started, no pace mark", (t)
   });
   if (!lines) return;
   assert.match(sentence(lines), /5-hour 0% not started/, show(lines));
-  assert.ok(withId(lines, "account-0-window-1"), show(lines));
-  assert.equal(withId(lines, "account-0-window-1-pace"), undefined);
-  assert.ok(withId(lines, "account-0-window-0-pace"), show(lines));
+  assert.ok(withId(lines, `bar-${MAXI}-5h`), show(lines));
+  assert.equal(withId(lines, `bar-${MAXI}-5h-pace`), undefined);
+  assert.ok(withId(lines, `bar-${MAXI}-7d-pace`), show(lines));
 });
 
 test("a first read draws the account's header lines only", (t) => {
@@ -412,12 +424,34 @@ test("a first read draws the account's header lines only", (t) => {
   assert.ok(!sentence(lines).includes("Read "), show(lines));
 });
 
-test("a login ending within 3 days is still said as its date", (t) => {
-  const lines = draw(t, {
-    readings: [maxi({ loginEndsAt: new Date(2026, 10, 14, 9, 0).getTime() })],
+test("a login in its last 3 days says how many days are left, in the account view's colour", (t) => {
+  const ending = maxi({
+    fetchedAt: NOW - 2 * MINUTE,
+    loginEndsAt: NOW + 2 * DAY,
   });
+  const lines = draw(t, { now: NOW, readings: [ending] });
   if (!lines) return;
-  assert.ok(texts(lines).includes("Login ends Nov 14"), show(lines));
+  const drawn = texts(lines);
+  assert.ok(drawn.includes("Login ends in 2 days"), show(lines));
+  assert.ok(!sentence(lines).includes("Login ends Nov"), show(lines));
+  // The account view says it in the high colour; the detail view the same.
+  const account = drawForm(t, "account", {
+    props: { form: "account", account: MAXI, overlay: "overlay-1" },
+    size: { width: 380, height: 640 },
+    now: NOW,
+    readings: [ending],
+    accounts: ACCOUNTS,
+  });
+  const colourOf = (drawing) =>
+    drawing[
+      drawing.findIndex(
+        (line) => line.trim() === 'text "Login ends in 2 days"',
+      ) - 1
+    ]?.match(/\.text_color\[Str\("([^"]*)"\)\]/)?.[1];
+  const high = colourOf(account);
+  assert.ok(high, show(account));
+  assert.notEqual(high, themeColour(t, "muted"));
+  assert.equal(colourOf(lines), high, show(lines));
 });
 
 test("with no accounts: the header, No accounts yet and the footer", (t) => {
@@ -631,13 +665,17 @@ test("inside a clickable account the arrows, dimmed ones too, and Sign in again 
   }
 });
 
-test("with no accounts only Connect account, the refresh control and the switch are clickable", (t) => {
+test("with no accounts only Connect account, the refresh control, the switch and its line are clickable", (t) => {
   const lines = draw(t, { readings: [], accounts: [] });
   if (!lines) return;
   const clickable = lines.filter((line) =>
     /:on_click\(fn\)|:on_change\(fn\)/.test(line),
   );
-  assert.equal(clickable.length, 3, show(clickable));
+  assert.equal(clickable.length, 4, show(clickable));
+  assert.ok(
+    clickable.some((line) => line.includes(':id[Str("notify-line")]')),
+    show(clickable),
+  );
   assert.ok(
     clickable.some((line) => line.includes(':id[Str("connect-account")]')),
     show(clickable),
@@ -661,5 +699,213 @@ test("a dimmed arrow keeps a press from reaching its account", (t) => {
     const control = withId(lines, id) ?? "";
     assert.match(control, /:disabled\[Bool\(true\)\]/, `${id}\n${show(lines)}`);
     assert.match(control, /:on_mouse_down_left\(fn\)/, `${id}\n${show(lines)}`);
+  }
+});
+
+test("Sign in again has room around it, taken back, and keeps its click, underline, pressed look and stop", (t) => {
+  const lines = draw(t, {
+    readings: [
+      maxi({
+        status: "signed-out",
+        loginEndsAt: new Date(2026, 10, 9, 15, 0).getTime(),
+        windows: [],
+      }),
+    ],
+  });
+  if (!lines) return;
+  const control = withId(lines, "account-0-sign-in") ?? "";
+  for (const part of [
+    ".px[Number(6.0)]",
+    ".py[Number(5.0)]",
+    ".mx[Number(-6.0)]",
+    ".my[Number(-5.0)]",
+    ".rounded[Number(6.0)]",
+    ":on_click(fn)",
+    ":hover(.underline)",
+    ":active(.opacity[Number(0.7)])",
+    ":on_mouse_down_left(fn)",
+  ]) {
+    assert.ok(control.includes(part), `${part}\n${show(lines)}`);
+  }
+});
+
+// A failed read whose windows are under, at, and before the start of their
+// limits.
+const failedMaxi = () =>
+  maxi({
+    status: "stale",
+    fetchedAt: THURSDAY - 12 * MINUTE,
+    error: "network",
+    windows: [
+      win("7d", 0.41, MONDAY_2030),
+      win("5h", 0.97, TODAY_1618, { atLimit: true }),
+      win("7d:sonnet", 0, null, { label: "Weekly · Sonnet" }),
+    ],
+  });
+
+for (const width of [380, 560]) {
+  test(`at ${width} px a failed read keeps each window's name, dimmed bar and last percentage, in the quiet colour, alone`, (t) => {
+    const lines = draw(t, { width, readings: [failedMaxi()] });
+    if (!lines) return;
+    const drawn = texts(lines);
+    const muted = themeColour(t, "muted");
+    for (const percent of ["41%", "97%", "0%"]) {
+      assert.ok(drawn.includes(percent), `${percent}\n${show(lines)}`);
+      const element =
+        lines[
+          lines.findIndex((line) => line.trim() === `text "${percent}"`) - 1
+        ];
+      assert.match(
+        element ?? "",
+        new RegExp(`\\.text_color\\[Str\\("${muted}"\\)\\]`),
+        `${percent}\n${show(lines)}`,
+      );
+    }
+    for (const name of ["Weekly", "5-hour", "Weekly · Sonnet"]) {
+      assert.ok(drawn.includes(name), `${name}\n${show(lines)}`);
+    }
+    for (const id of [
+      `bar-${MAXI}-7d`,
+      `bar-${MAXI}-5h`,
+      `bar-${MAXI}-7d:sonnet`,
+    ]) {
+      assert.match(withId(lines, id) ?? "", /\.opacity\[Number\(0\.4\)\]/, id);
+    }
+    for (const text of drawn) {
+      assert.doesNotMatch(text, /resets in|not started|At limit/, show(lines));
+      assert.doesNotMatch(text, /\d{1,2}:\d{2}/, show(lines));
+    }
+  });
+}
+
+// After a press on the refresh control, with a store whose read `read`
+// (skips, runs, settles): the spinner while a read runs, the icon otherwise.
+for (const [read, turning] of [
+  ["skips", false],
+  ["runs", true],
+  ["settles", false],
+]) {
+  test(`a press on refresh with a read that ${read} draws ${turning ? "the spinner" : "the refresh icon"}`, (t) => {
+    const result = drawClicking(
+      t,
+      "detail",
+      {
+        props: { form: "detail", overlay: "overlay-1" },
+        size: { width: 380, height: 640 },
+        now: THURSDAY,
+        readings: [maxi(), terac()],
+        accounts: ACCOUNTS,
+        read,
+      },
+      "refresh",
+    );
+    if (!result) return;
+    assert.deepEqual(result.calls, [["refresh"]]);
+    const drawn = inside(result.lines, "refresh").join("\n");
+    if (turning) {
+      assert.match(drawn, /spinner\.svg/, show(result.lines));
+      assert.doesNotMatch(drawn, /icons\/refresh\.svg/);
+    } else {
+      assert.match(
+        drawn,
+        /svg "mods\/headroom\/icons\/refresh\.svg"/,
+        show(result.lines),
+      );
+      assert.doesNotMatch(drawn, /spinner\.svg/);
+    }
+  });
+}
+
+// Text longer than any place in a 380 px popup can hold.
+const LONG_LABEL = "Personal Claude account for weekends and side projects";
+const LONG_EMAIL = "maximilian.lindner-rodriguez@terac-engineering.example";
+const LONG_WINDOW = "Weekly · Claude Opus with extended thinking and tool use";
+const CONTROLS = new Set([
+  "Refresh",
+  "Move up",
+  "Move down",
+  "Rename or remove",
+  "Connect account",
+]);
+
+// The line of the element that draws `text`.
+function elementOf(lines, text) {
+  const at = lines.findIndex(
+    (line) => line.trim() === `text ${JSON.stringify(text)}`,
+  );
+  assert.ok(at > 0, `no ${text}\n${show(lines)}`);
+  return lines[at - 1];
+}
+
+const tooltip = (text) => `:tooltip[Str(${JSON.stringify(text)})]`;
+
+// Every tooltip drawn.
+const tooltips = (lines) =>
+  lines.flatMap((line) =>
+    [...line.matchAll(/:tooltip\[Str\(("(?:[^"\\]|\\.)*")\)\]/g)].map((match) =>
+      JSON.parse(match[1]),
+    ),
+  );
+
+test("a label the detail view can cut carries its whole text as a tooltip; work carries none", (t) => {
+  assert.equal(LONG_LABEL.length, 54);
+  const lines = draw(t, {
+    readings: [maxi({ label: LONG_LABEL }), terac({ label: "work" })],
+  });
+  if (!lines) return;
+  assert.ok(
+    elementOf(lines, LONG_LABEL).includes(tooltip(LONG_LABEL)),
+    show(lines),
+  );
+  assert.doesNotMatch(elementOf(lines, "work"), /:tooltip/);
+});
+
+test("a long plan, a long email beside an organization and a long window name each carry their tooltip", (t) => {
+  const plan = "Self serve business prolite";
+  const lines = draw(t, {
+    readings: [
+      terac({
+        plan,
+        windows: [
+          win("7d", 0.78, SATURDAY_1830),
+          win("7d:opus", 0.18, SATURDAY_1830, { label: LONG_WINDOW }),
+        ],
+      }),
+    ],
+    accounts: ACCOUNTS.map((account) =>
+      account.id === TERAC ? { ...account, email: LONG_EMAIL } : account,
+    ),
+  });
+  if (!lines) return;
+  for (const text of [plan, LONG_EMAIL, LONG_WINDOW]) {
+    assert.ok(elementOf(lines, text).includes(tooltip(text)), show(lines));
+  }
+});
+
+test("from 520 px a window's name has a 120 px column: a name that fits at 380 px is cut there", (t) => {
+  // 16 ASCII letters and a middle dot at 12 px: 128.4 px, over 120 px and
+  // under the 136.8 px the name has beside its numbers at 380 px.
+  const name = "Weekly · Opus 4.5";
+  const readings = [
+    maxi({
+      windows: [
+        win("5h", 0.62, TODAY_1618),
+        win("7d:opus", 0.18, MONDAY_2030, { label: name }),
+        win("7d", 0.41, MONDAY_2030),
+      ],
+    }),
+  ];
+  const narrow = draw(t, { readings });
+  if (!narrow) return;
+  assert.doesNotMatch(elementOf(narrow, name), /:tooltip/);
+  const wide = draw(t, { width: 560, readings });
+  assert.ok(elementOf(wide, name).includes(tooltip(name)), show(wide));
+});
+
+test("the usual accounts' labels, plans, emails, organizations and window names carry no tooltip", (t) => {
+  const lines = draw(t, { readings: [maxi(), terac(), maxilr()] });
+  if (!lines) return;
+  for (const text of tooltips(lines)) {
+    assert.ok(CONTROLS.has(text), `${text}\n${show(lines)}`);
   }
 });

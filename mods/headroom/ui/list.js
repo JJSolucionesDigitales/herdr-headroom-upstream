@@ -8,15 +8,41 @@
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { openAccount } from "../logic/account.js";
+import { canCut } from "../logic/cut.js";
 import { fitTo, HEADER, LINE, LIST_BELOW, listNeeds } from "../logic/fit.js";
 import { hintCount, moreWords, wheel } from "../logic/hint.js";
 import { listRowOf } from "../logic/list.js";
+import { textWidth } from "../logic/strip.js";
 import { open as openConnect } from "./connect.js";
 import { open as openDetail } from "./detail.js";
-import { edgeBand, levelText, mark, moreIcon, pair } from "./kit.js";
+import {
+  edgeBand,
+  levelText,
+  mark,
+  moreIcon,
+  pair,
+  pressedGround,
+  pressedWord,
+} from "./kit.js";
 
 const PLUS = "mods/workspace-chrome/plus.svg";
 const CHEVRON = "mods/workspace-chrome/chevron-down.svg";
+
+/** The list's width before it is measured. */
+const UNMEASURED = 268;
+// Its accounts' sides: the content's padding and the account's, 8 px each.
+const SIDES = 32;
+const MARK = 14;
+const GAP = 8;
+const LABEL = 13;
+const NOTE = 11;
+
+// The px the label of `row` has in a list `width` px wide (null: not
+// measured yet): the account's width less the mark and the note beside it.
+function labelPlace(row, width) {
+  const note = row.note === null ? 0 : GAP + textWidth(row.note.text, NOTE);
+  return (width ?? UNMEASURED) - SIDES - MARK - GAP - note;
+}
 
 function header(view) {
   const t = view.theme;
@@ -46,6 +72,7 @@ function header(view) {
         .rounded(6)
         .cursor_pointer()
         .hover((s) => s.bg(t.hover))
+        .active(pressedGround(t))
         .on_click(() => openDetail(view))
         .child(moreIcon(14, t)),
     );
@@ -98,6 +125,7 @@ function empty(view) {
             .text_color(t.foreground)
             .cursor_pointer()
             .hover((s) => s.bg(t.hover))
+            .active(pressedGround(t))
             .on_click(() => openConnect(view, {}))
             .child(svg(PLUS).size(12).flex_none().text_color(t.muted))
             .child("Connect account"),
@@ -105,22 +133,25 @@ function empty(view) {
     );
 }
 
-// The label line: the mark, the label and, on the right, the row's note.
+// The label line: the mark, the label and, on the right, the row's note. A
+// label that can be cut carries its whole text as a tooltip.
 function labelLine(row, index, view) {
   const t = view.theme;
   const signedOut = row.state === "signed-out";
+  const place = labelPlace(row, view.size?.width);
   return h_flex()
     .h(26)
-    .gap(8)
+    .gap(GAP)
     .items_center()
-    .child(mark(row.provider, 14, t))
+    .child(mark(row.provider, MARK, t))
     .child(
       div()
         .flex_1()
         .min_w(0)
         .truncate()
-        .text_size(13)
+        .text_size(LABEL)
         .text_color(signedOut ? t.muted : t.foreground)
+        .when(canCut(row.label, LABEL, place), (el) => el.tooltip(row.label))
         .child(row.label),
     )
     .when(row.note !== null && !signedOut, (el) =>
@@ -141,8 +172,17 @@ function labelLine(row, index, view) {
           .flex_none()
           .text_size(11)
           .text_color(t.accent)
+          // Room around the word, taken back so nothing else moves.
+          .px(6)
+          .py(5)
+          .mx(-6)
+          .my(-5)
+          .rounded(6)
           .cursor_pointer()
           .hover((s) => s.underline())
+          .active(pressedWord())
+          // A press here does not look like a press on the row.
+          .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
           .on_click((_event, cx) => {
             cx.stop_propagation();
             openConnect(view, { provider: row.provider, account: row.id });
@@ -221,6 +261,7 @@ function account(reading, index, view) {
       .rounded(8)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
+      .active(pressedGround(t))
       .on_click(() => openAccount(view, reading.id))
       // A reorder can change the first two accounts without changing how tall
       // all of them are together.
@@ -242,7 +283,7 @@ function account(reading, index, view) {
         el.child(
           pair(
             {
-              id,
+              id: `bar-${reading.id}`,
               full: row.pair.full,
               short: row.pair.short,
               dimmed: row.dimmed,
