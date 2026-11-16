@@ -58,12 +58,15 @@ sidebar and a strip, hidden until you turn it on, in the status bar.
   nothing.
 - `scripts/install.sh` alone installs only the mod, for
   [a layout of your own](#using-it-in-your-own-layout).
-- Run it again to update. The previous install is moved to
+- `headroom update`, from any directory, updates it: it pulls this checkout
+  and installs it again. The previous install is moved to
   `<Herdr home>/backups/`, and a layout that already exists is never
-  overwritten.
+  overwritten. The command is `~/.local/bin/headroom`, the one file the
+  installer writes outside the Herdr home; remove it too when you
+  [undo the install](docs/install.md#undoing).
 
-[Installing](docs/install.md) covers each step, replacing a layout an earlier
-version wrote, and undoing the install.
+[Installing](docs/install.md) covers each step, updating, replacing a layout an
+earlier version wrote, and undoing the install.
 
 ## Connect an account
 
@@ -231,6 +234,7 @@ mods/headroom/
   ui/          one module per form and dialog, and the shared kit
   icons/       the mod's own SVGs
 scripts/       install.sh: copies the mod into a Herdr home; optional layout
+               headroom: the command behind `headroom update`
 tests/         node --test, with fixtures and helpers
 ```
 
